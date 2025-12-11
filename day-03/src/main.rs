@@ -9,30 +9,32 @@ fn main() {
     let input = fs::read_to_string(input_filename).expect("failed to read input");
     let banks: Vec<&str> = input.trim().split("\n").collect();
 
-    let total: usize = banks
+    let part_1: usize = banks
         .iter()
-        .map(|bank| highest_joltage(&bank.as_bytes()))
+        .map(|bank| highest_joltage(&bank.as_bytes(), 2))
         .sum();
 
-    println!("The total joltage is {}", total);
+    let part_2: usize = banks
+        .iter()
+        .map(|bank| highest_joltage(&bank.as_bytes(), 12))
+        .sum();
+
+    println!("The total joltage with 2 batteries is {}", part_1);
+    println!("The total joltage with 12 batteries is {}", part_2);
 }
 
-fn highest_joltage(bank: &[u8]) -> usize {
-    let (at, mut digit_1) = first_max(&bank);
-    let digit_2;
-
-    if at == bank.len() - 1 {
-        digit_2 = digit_1;
-        digit_1 = bank[..at].iter().max().unwrap()
+fn highest_joltage(bank: &[u8], num_batteries: usize) -> usize {
+    let (at, val) = first_max(&bank[0..=bank.len() - num_batteries]);
+    if num_batteries == 1 {
+        val
     } else {
-        digit_2 = bank[at + 1..].iter().max().unwrap();
-    };
-
-    ((*digit_1 - '0' as u8) * 10u8 + (*digit_2 - '0' as u8)) as usize
+        val * 10usize.pow(num_batteries as u32 - 1)
+            + highest_joltage(&bank[at + 1..], num_batteries - 1)
+    }
 }
 
-fn first_max(bank: &[u8]) -> (usize, &u8) {
+fn first_max(bank: &[u8]) -> (usize, usize) {
     let max_val = bank.iter().max().unwrap();
     let at = bank.iter().position(|val| val == max_val).unwrap();
-    (at, max_val)
+    (at, (max_val - '0' as u8).into())
 }
