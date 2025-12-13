@@ -7,24 +7,38 @@ use std::{env, fs};
 fn main() {
     let input_filename = env::args().nth(1).expect("please supply an input filename");
     let input = fs::read_to_string(input_filename).expect("failed to read input");
-    let grid = Grid::new(&input);
+    let mut grid = Grid::new(&input);
 
-    let movable = (0..grid.data.len())
+    let mut total_moved = 0;
+    let mut moved = move_rolls(&mut grid);
+
+    println!("The number of rolls moved in the first round were: {moved}");
+
+    while moved > 0 {
+        total_moved += moved;
+        moved = move_rolls(&mut grid);
+    }
+
+    println!("The total number of paper rolls that were moved were: {total_moved}");
+}
+
+fn move_rolls(grid: &mut Grid) -> usize {
+    let movable_indices: Vec<usize> = (0..grid.data.len())
         .filter(|i| {
             let adjacent_rolls = grid
-                .get_adjacent_indices_matching(*i, '@' as u8)
+                .get_adjacent_indices_matching(*i, b'@')
                 .iter()
                 .flatten()
                 .count();
 
-            grid.data[*i] == '@' as u8 && adjacent_rolls < 4
+            grid.data[*i] == b'@' && adjacent_rolls < 4
         })
-        .count();
-
-    println!(
-        "The total number of forklift-accessible paper rolls initially is {}",
-        movable
-    );
+        .collect();
+    let moved = movable_indices.len();
+    for i in movable_indices {
+        grid.data[i] = b'x';
+    }
+    moved
 }
 
 struct Grid {
@@ -35,18 +49,9 @@ struct Grid {
 
 impl Grid {
     fn new(input: &str) -> Self {
-        let cols = input
-            .as_bytes()
-            .iter()
-            .position(|c| *c == '\n' as u8)
-            .unwrap();
-
+        let cols = input.as_bytes().iter().position(|c| *c == b'\n').unwrap();
         let data = input.replace("\n", "").into_bytes();
-
         let rows = data.len() / cols;
-
-        assert_eq!(data.len() % rows, 0);
-
         Self { data, rows, cols }
     }
 
