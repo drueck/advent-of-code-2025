@@ -2,6 +2,7 @@
 // https://adventofcode.com/2025/day/5
 // Usage: `cargo run <input-file>
 
+use std::cmp::{max, min};
 use std::ops::RangeInclusive;
 use std::{env, fs};
 
@@ -24,10 +25,65 @@ fn main() {
         .map(|val| val.parse::<usize>().unwrap())
         .collect();
 
-    let fresh = available
+    let mut merged_ranges = MergedRanges::new();
+    for range in fresh_ranges {
+        merged_ranges.add(&range);
+    }
+
+    let available_fresh = available
         .iter()
-        .filter(|ingredient| fresh_ranges.iter().any(|range| range.contains(ingredient)))
+        .filter(|ingredient| merged_ranges.contain(&ingredient))
         .count();
 
-    println!("The number of fresh ingredients is {fresh}");
+    println!("The number of available fresh ingredients is {available_fresh}");
+
+    println!(
+        "The total number of fresh ingredients is {}",
+        merged_ranges.len()
+    );
+}
+
+struct MergedRanges {
+    ranges: Vec<RangeInclusive<usize>>,
+}
+
+impl MergedRanges {
+    fn new() -> Self {
+        Self { ranges: vec![] }
+    }
+
+    fn add(&mut self, new_range: &RangeInclusive<usize>) {
+        let mut updated_ranges = vec![];
+        let mut new_merged = new_range.clone();
+        for range in &self.ranges[..] {
+            if let Some(merged) = try_merge(&new_merged, &range) {
+                new_merged = merged;
+            } else {
+                updated_ranges.push(range.clone());
+            }
+        }
+        updated_ranges.push(new_merged);
+        self.ranges = updated_ranges;
+    }
+
+    fn contain(&self, item: &usize) -> bool {
+        self.ranges.iter().any(|range| range.contains(item))
+    }
+
+    fn len(&self) -> usize {
+        self.ranges
+            .iter()
+            .map(|range| range.end() - range.start() + 1)
+            .sum()
+    }
+}
+
+fn try_merge(
+    range_a: &RangeInclusive<usize>,
+    range_b: &RangeInclusive<usize>,
+) -> Option<RangeInclusive<usize>> {
+    if (range_a.start() <= range_b.end()) & (range_b.start() <= range_a.end()) {
+        return Some(min(*range_a.start(), *range_b.start())..=max(*range_a.end(), *range_b.end()));
+    }
+    None
 }
