@@ -9,20 +9,20 @@ fn main() {
     let input = fs::read_to_string(input_filename).expect("failed to read input");
     let grid = Grid::new(&input);
 
-    let mut movable: usize = 0;
+    let movable = (0..grid.data.len())
+        .filter(|i| {
+            let adjacent_rolls = grid
+                .get_adjacent_indices_matching(*i, '@' as u8)
+                .iter()
+                .flatten()
+                .count();
 
-    for row in 0..grid.rows {
-        for col in 0..grid.cols {
-            if grid.val(row as isize, col as isize) == Some('@' as u8)
-                && grid.count_adjacent(row as isize, col as isize, '@' as u8) < 4
-            {
-                movable += 1;
-            }
-        }
-    }
+            grid.data[*i] == '@' as u8 && adjacent_rolls < 4
+        })
+        .count();
 
     println!(
-        "The total number of forklift-accessible paper rolls is {}",
+        "The total number of forklift-accessible paper rolls initially is {}",
         movable
     );
 }
@@ -50,29 +50,33 @@ impl Grid {
         Self { data, rows, cols }
     }
 
-    fn val(&self, row: isize, col: isize) -> Option<u8> {
+    fn get_adjacent_indices_matching(&self, index: usize, test_val: u8) -> [Option<usize>; 8] {
+        let (row, col) = (index / self.cols, index % self.cols);
+
+        self.adjacent_indices(row as isize, col as isize)
+            .map(|opt| match opt {
+                Some(index) if self.data[index] == test_val => Some(index),
+                _ => None,
+            })
+    }
+
+    fn coord_to_index(&self, row: isize, col: isize) -> Option<usize> {
         if row < 0 || row > self.rows as isize - 1 || col < 0 || col > self.cols as isize - 1 {
             return None;
         }
-        Some(self.data[row as usize * self.cols + col as usize])
+        Some(row as usize * self.cols + col as usize)
     }
 
-    fn count_adjacent(&self, row: isize, col: isize, test_val: u8) -> usize {
+    fn adjacent_indices(&self, row: isize, col: isize) -> [Option<usize>; 8] {
         [
-            self.val(row - 1, col),     // N
-            self.val(row - 1, col + 1), // NE
-            self.val(row, col + 1),     // E
-            self.val(row + 1, col + 1), // SE
-            self.val(row + 1, col),     // S
-            self.val(row + 1, col - 1), // SW
-            self.val(row, col - 1),     // W
-            self.val(row - 1, col - 1), // NW
+            self.coord_to_index(row - 1, col),     // N
+            self.coord_to_index(row - 1, col + 1), // NE
+            self.coord_to_index(row, col + 1),     // E
+            self.coord_to_index(row + 1, col + 1), // SE
+            self.coord_to_index(row + 1, col),     // S
+            self.coord_to_index(row + 1, col - 1), // SW
+            self.coord_to_index(row, col - 1),     // W
+            self.coord_to_index(row - 1, col - 1), // NW
         ]
-        .iter()
-        .filter_map(|opt| match opt {
-            Some(val) => Some((*val == test_val) as usize),
-            None => None,
-        })
-        .sum()
     }
 }
