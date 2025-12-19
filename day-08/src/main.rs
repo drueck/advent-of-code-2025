@@ -1,6 +1,6 @@
 // Advent of Code 2025: Day 8
 // https://adventofcode.com/2025/day/8
-// Usage: `cargo run <input-file>
+// Usage: `cargo run <input-file> [<boxes-to-connect-for-part-1>]
 
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BinaryHeap, HashSet};
@@ -8,11 +8,15 @@ use std::{env, fs};
 
 fn main() {
     let input_filename = env::args().nth(1).expect("please supply an input filename");
-    let max_pairs: usize = env::args()
-        .nth(2)
-        .expect("please specify the number of pairs to connet")
-        .parse()
-        .expect("please specify the number of pairs as an integer");
+    let max_pairs = if env::args().len() > 2 {
+        env::args()
+            .nth(2)
+            .expect("please specify the number of boxes to connet")
+            .parse()
+            .expect("please specify the number of boxes as an integer")
+    } else {
+        usize::MAX
+    };
     let input = fs::read_to_string(input_filename).expect("failed to read input");
 
     let boxes: Vec<Point> = input
@@ -45,6 +49,7 @@ fn main() {
 
     let combos = combinations.into_sorted_vec();
     let mut circuits: Vec<HashSet<&Point>> = vec![];
+    let mut last_pair: &PointPair = &combos[0];
 
     for pair in &combos[..] {
         let mut new_circuits: Vec<HashSet<&Point>> = vec![];
@@ -59,14 +64,23 @@ fn main() {
             }
         }
         new_circuits.push(new_circuit);
-        circuits = new_circuits
+        circuits = new_circuits;
+
+        if circuits.len() == 1 && circuits[0].len() == boxes.len() {
+            last_pair = &pair;
+            break;
+        }
     }
 
     circuits.sort_unstable_by_key(|circuit| Reverse(circuit.len()));
 
-    let part_1: usize = circuits[..3].iter().map(|circuit| circuit.len()).product();
-
-    println!("The sum of the three largest circuits was {part_1}");
+    if max_pairs != usize::MAX {
+        let part_1: usize = circuits[..3].iter().map(|circuit| circuit.len()).product();
+        println!("The sum of the three largest circuits was {part_1}");
+    } else {
+        let part_2: isize = last_pair.a.x * last_pair.b.x;
+        println!("The sum of the x coordinates of the last pair was {part_2}");
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
