@@ -2,6 +2,8 @@
 // https://adventofcode.com/2025/day/10
 // Usage: `cargo run <input-file>
 
+use day_10::linear_algebra::{extract_pivots, gauss_jordan_to_rref};
+use day_10::rational::Rational;
 use regex::Regex;
 use std::cmp::{Ord, Ordering, PartialOrd};
 use std::collections::hash_map::Entry;
@@ -25,9 +27,20 @@ fn main() {
         .collect();
 
     let part_1: usize = machines
-        .into_iter()
+        .iter()
         .map(|machine| fewest_presses(&machine))
         .sum();
+
+    let mut equations = machines[0].equations.clone();
+    gauss_jordan_to_rref(&mut equations);
+
+    let pivot_data = extract_pivots(&equations);
+
+    for i in 0..equations.len() {
+        println!("{:?}", equations[i]);
+    }
+
+    println!("{:?}", pivot_data);
 
     println!("{part_1}");
 }
@@ -49,8 +62,8 @@ fn fewest_presses(machine: &Machine) -> usize {
     best_paths.insert(0, vec![]);
 
     while let Some(state) = states.pop() {
-        for i in 0..machine.buttons.len() {
-            let lights = state.lights ^ machine.buttons[i];
+        for i in 0..machine.buttons_bitmaps.len() {
+            let lights = state.lights ^ machine.buttons_bitmaps[i];
 
             let mut buttons_pressed = state.buttons_pressed.clone();
             buttons_pressed.push(i as u8);
@@ -60,7 +73,7 @@ fn fewest_presses(machine: &Machine) -> usize {
                 buttons_pressed,
             };
 
-            if new_state.lights == machine.lights {
+            if new_state.lights == machine.lights_bitmaps {
                 return new_state.buttons_pressed.len();
             }
 
@@ -87,9 +100,10 @@ fn fewest_presses(machine: &Machine) -> usize {
 
 #[derive(Debug)]
 struct Machine {
-    lights: u32,       // bitmap with low bit representing the 0th light
-    buttons: Vec<u32>, // bitmaps with which lights each button toggles
+    lights_bitmaps: u32,       // bitmap with low bit representing the 0th light
+    buttons_bitmaps: Vec<u32>, // bitmaps with which lights each button toggles
     joltages: Vec<u32>,
+    equations: Vec<Vec<Rational>>, // matrix representing the constraint equations
 }
 
 #[derive(Debug)]
@@ -101,7 +115,7 @@ impl FromStr for Machine {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let captures = MACHINE_REGEX.captures(&s).unwrap();
 
-        let lights = captures[1]
+        let lights_bitmaps = captures[1]
             .as_bytes()
             .iter()
             .enumerate()
@@ -111,23 +125,42 @@ impl FromStr for Machine {
             })
             .sum();
 
-        let buttons = BUTTON_REGEX
+        let buttons: Vec<Vec<u32>> = BUTTON_REGEX
             .captures_iter(&captures[2])
             .map(|captures| captures.get(1).unwrap().as_str())
             .map(|button| {
                 button
                     .split(',')
-                    .map(|light_index| 1 << light_index.parse::<u32>().unwrap())
-                    .sum()
+                    .map(|light_index| light_index.parse::<u32>().unwrap())
+                    .collect()
             })
             .collect();
 
-        let joltages = captures[3].split(',').map(|s| s.parse().unwrap()).collect();
+        let buttons_bitmaps = buttons
+            .iter()
+            .map(|button| button.iter().map(|light_index| 1 << light_index).sum())
+            .collect();
+
+        let joltages: Vec<u32> = captures[3].split(',').map(|s| s.parse().unwrap()).collect();
+
+        let mut equations = vec![vec![Rational::from(0); buttons.len() + 1]; joltages.len()];
+
+        for (button_index, button) in buttons.iter().enumerate() {
+            for joltage_index in button.iter() {
+                equations[*joltage_index as usize][button_index] = 1.into();
+            }
+        }
+
+        let ji = buttons.len();
+        for (i, joltage) in joltages.iter().enumerate() {
+            equations[i][ji] = Rational::from(*joltage as isize);
+        }
 
         Ok(Self {
-            lights,
-            buttons,
+            lights_bitmaps,
+            buttons_bitmaps,
             joltages,
+            equations,
         })
     }
 }
