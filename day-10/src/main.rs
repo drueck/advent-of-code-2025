@@ -2,7 +2,7 @@
 // https://adventofcode.com/2025/day/10
 // Usage: `cargo run <input-file>
 
-use day_10::linear_algebra::{extract_pivots, gauss_jordan_to_rref};
+use day_10::linear_algebra::{extract_parametric_solution, extract_pivots, gauss_jordan_to_rref};
 use day_10::rational::Rational;
 use regex::Regex;
 use std::cmp::{Ord, Ordering, PartialOrd};
@@ -33,14 +33,18 @@ fn main() {
 
     let mut equations = machines[0].equations.clone();
     gauss_jordan_to_rref(&mut equations);
-
     let pivot_data = extract_pivots(&equations);
+    let parametric_solution = extract_parametric_solution(&equations, &pivot_data);
 
-    for i in 0..equations.len() {
-        println!("{:?}", equations[i]);
+    for affine_expression in parametric_solution {
+        println!("{:?}", affine_expression);
     }
 
-    println!("{:?}", pivot_data);
+    // for i in 0..equations.len() {
+    //     println!("{:?}", equations[i]);
+    // }
+
+    // println!("{:?}", pivot_data);
 
     println!("{part_1}");
 }

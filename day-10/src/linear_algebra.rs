@@ -83,15 +83,13 @@ fn find_pivot(
 
 #[derive(Debug)]
 pub struct PivotData {
-    pub pivot_columns: Vec<usize>,
-    pub free_columns: Vec<usize>,
     pub pivot_row_for_col: HashMap<usize, usize>,
+    pub free_columns: Vec<usize>,
 }
 
 pub fn extract_pivots(rref_matrix: &Vec<Vec<Rational>>) -> PivotData {
     let rows = rref_matrix.len();
     let cols = rref_matrix[0].len();
-    let mut pivot_columns = vec![];
     let mut free_columns = vec![];
     let mut pivot_row_for_col: HashMap<usize, usize> = HashMap::new();
 
@@ -100,7 +98,6 @@ pub fn extract_pivots(rref_matrix: &Vec<Vec<Rational>>) -> PivotData {
             let val = rref_matrix[row][col];
             if val != 0.into() {
                 if val == 1.into() {
-                    pivot_columns.push(col);
                     pivot_row_for_col.insert(col, row);
                 }
                 continue 'rows;
@@ -109,14 +106,55 @@ pub fn extract_pivots(rref_matrix: &Vec<Vec<Rational>>) -> PivotData {
     }
 
     for col in 0..(cols - 1) {
-        if !pivot_columns.contains(&col) {
+        if !pivot_row_for_col.contains_key(&col) {
             free_columns.push(col);
         }
     }
 
     PivotData {
-        pivot_columns,
         free_columns,
         pivot_row_for_col,
     }
+}
+
+// an expression that defines a variable in terms of a constant
+// plus the sum of free variables times their coefficients
+#[derive(Debug, Clone)]
+pub struct AffineExpression {
+    pub constant: Rational,
+    pub free_variable_coefficients: HashMap<usize, Rational>,
+}
+
+pub fn extract_parametric_solution(
+    rref_matrix: &Vec<Vec<Rational>>,
+    pivot_data: &PivotData,
+) -> Vec<AffineExpression> {
+    let rhs_col = rref_matrix[0].len() - 1;
+
+    (0..rhs_col)
+        .map(|col| {
+            // check if it's a pivot col or free col
+            if pivot_data.pivot_row_for_col.contains_key(&col) {
+                let row = pivot_data.pivot_row_for_col[&col];
+                let constant = rref_matrix[row][rhs_col];
+                let free_variable_coefficients = pivot_data
+                    .free_columns
+                    .iter()
+                    .map(|free_col| (*free_col, -rref_matrix[row][*free_col]))
+                    .filter(|(_free_col, coefficient)| *coefficient != 0.into())
+                    .collect();
+                AffineExpression {
+                    constant,
+                    free_variable_coefficients,
+                }
+            } else {
+                let constant = 0.into();
+                let free_variable_coefficients = HashMap::from([(col, 1.into())]);
+                AffineExpression {
+                    constant,
+                    free_variable_coefficients,
+                }
+            }
+        })
+        .collect()
 }
