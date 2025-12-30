@@ -1,6 +1,6 @@
 use std::convert::From;
 use std::fmt;
-use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 #[derive(Eq, PartialEq, Clone, Copy)]
 pub struct Rational {
@@ -121,6 +121,14 @@ impl DivAssign for Rational {
     }
 }
 
+impl Neg for Rational {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        self * Self::from(-1)
+    }
+}
+
 fn gcd(x: isize, y: isize) -> isize {
     let mut x = x;
     let mut y = y;
@@ -210,5 +218,11 @@ mod tests {
         let b = Rational::new(1, 2);
         a /= b;
         assert_eq!(a, 1.into());
+    }
+
+    #[test]
+    fn neg() {
+        let a = Rational::new(-7, 3);
+        assert_eq!(-a, Rational::new(7, 3));
     }
 }
