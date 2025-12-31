@@ -1,3 +1,4 @@
+use core::fmt;
 use std::collections::HashMap;
 
 use crate::rational::Rational;
@@ -121,8 +122,38 @@ pub fn extract_pivots(rref_matrix: &Vec<Vec<Rational>>) -> PivotData {
 // plus the sum of free variables times their coefficients
 #[derive(Debug, Clone)]
 pub struct AffineExpression {
+    pub dependent_variable: usize,
     pub constant: Rational,
     pub free_variable_coefficients: HashMap<usize, Rational>,
+}
+
+impl fmt::Display for AffineExpression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let dep = var(self.dependent_variable);
+        let free = self
+            .free_variable_coefficients
+            .iter()
+            .map(|(i, c)| free_var(*i, *c))
+            .collect::<Vec<String>>()
+            .join(" ");
+
+        write!(f, "{dep} = {} {free}", self.constant)
+    }
+}
+
+fn var(index: usize) -> char {
+    (b'a' + index as u8) as char
+}
+
+fn free_var(index: usize, coefficient: Rational) -> String {
+    let sign = if coefficient.numerator < 0 { '-' } else { '+' };
+    let coef = coefficient.abs();
+    let coef = if coef == 1.into() {
+        "".into()
+    } else {
+        format!("{coef}")
+    };
+    format!("{} {}{}", sign, coef, var(index))
 }
 
 pub fn extract_parametric_solution(
@@ -144,6 +175,7 @@ pub fn extract_parametric_solution(
                     .filter(|(_free_col, coefficient)| *coefficient != 0.into())
                     .collect();
                 AffineExpression {
+                    dependent_variable: col,
                     constant,
                     free_variable_coefficients,
                 }
@@ -151,6 +183,7 @@ pub fn extract_parametric_solution(
                 let constant = 0.into();
                 let free_variable_coefficients = HashMap::from([(col, 1.into())]);
                 AffineExpression {
+                    dependent_variable: col,
                     constant,
                     free_variable_coefficients,
                 }
