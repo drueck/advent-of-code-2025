@@ -1,11 +1,12 @@
 use std::convert::From;
 use std::fmt;
+use std::iter::Sum;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 #[derive(Eq, PartialEq, Clone, Copy)]
 pub struct Rational {
-    numerator: isize,
-    denominator: isize,
+    pub numerator: isize,
+    pub denominator: isize,
 }
 
 impl From<isize> for Rational {
@@ -49,6 +50,14 @@ impl Rational {
         Self {
             numerator: reduced_n.abs() * sign,
             denominator: reduced_d.abs(),
+        }
+    }
+
+    pub fn abs(&self) -> Self {
+        if self.numerator < 0 {
+            *self * Self::from(-1)
+        } else {
+            *self
         }
     }
 }
@@ -126,6 +135,12 @@ impl Neg for Rational {
 
     fn neg(self) -> Self::Output {
         self * Self::from(-1)
+    }
+}
+
+impl Sum for Rational {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.reduce(|result, num| result + num).unwrap()
     }
 }
 
