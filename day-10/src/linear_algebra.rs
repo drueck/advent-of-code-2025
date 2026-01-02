@@ -1,5 +1,6 @@
 use core::fmt;
 use std::collections::HashMap;
+use std::iter::Sum;
 
 use crate::rational::Rational;
 
@@ -127,17 +128,60 @@ pub struct AffineExpression {
     pub free_variable_coefficients: HashMap<usize, Rational>,
 }
 
+impl AffineExpression {
+    pub fn eval(&self, values: &HashMap<usize, Rational>) -> Rational {
+        let mut result = self.constant;
+
+        assert_eq!(self.free_variable_coefficients.len(), values.len());
+
+        for (var, value) in values.iter() {
+            assert!(self.free_variable_coefficients.contains_key(var));
+            result += self.free_variable_coefficients[var] * *value
+        }
+
+        result
+    }
+}
+
+impl<'a> Sum for AffineExpression {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        let result = AffineExpression {
+            dependent_variable: (b's' - b'a') as usize,
+            constant: 0.into(),
+            free_variable_coefficients: HashMap::new(),
+        };
+
+        iter.fold(result, |mut result, ae| {
+            result.constant += ae.constant;
+            for (i, c) in ae.free_variable_coefficients {
+                *result
+                    .free_variable_coefficients
+                    .entry(i)
+                    .or_insert(0.into()) += c;
+            }
+            result
+        })
+    }
+}
+
 impl fmt::Display for AffineExpression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let dep = var(self.dependent_variable);
-        let free = self
+        let mut free: Vec<(usize, Rational)> = self
             .free_variable_coefficients
+            .iter()
+            .map(|(i, c)| (*i, *c))
+            .collect();
+
+        free.sort_unstable_by_key(|(i, _)| *i);
+
+        let free_equation = free
             .iter()
             .map(|(i, c)| free_var(*i, *c))
             .collect::<Vec<String>>()
             .join(" ");
 
-        write!(f, "{dep} = {} {free}", self.constant)
+        write!(f, "{dep} = {} {free_equation}", self.constant)
     }
 }
 
@@ -190,4 +234,43 @@ pub fn extract_parametric_solution(
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sum_of_affine_expressions() {
+        let a = AffineExpression {
+            dependent_variable: 0,
+            constant: 5.into(),
+            free_variable_coefficients: HashMap::from([(2, Rational::from(-1))]),
+        };
+        let b = AffineExpression {
+            dependent_variable: 1,
+            constant: Rational::from(-7),
+            free_variable_coefficients: HashMap::from([
+                (2, Rational::from(-7)),
+                (3, Rational::from(2)),
+            ]),
+        };
+
+        let sum: AffineExpression = [a, b].into_iter().sum();
+
+        assert_eq!(format!("{sum}"), String::from("s = -2 - 8c + 2d"));
+    }
+
+    #[test]
+    fn eval_affine_expression() {
+        let a = AffineExpression {
+            dependent_variable: 0,
+            constant: 5.into(),
+            free_variable_coefficients: HashMap::from([(2, Rational::from(-1))]),
+        };
+
+        let values = HashMap::from([(2, Rational::from(2))]);
+
+        assert_eq!(a.eval(&values), Rational::from(3));
+    }
 }
