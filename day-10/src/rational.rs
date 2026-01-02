@@ -1,3 +1,4 @@
+use std::cmp::{Ord, Ordering, PartialOrd};
 use std::convert::From;
 use std::fmt;
 use std::iter::Sum;
@@ -59,6 +60,26 @@ impl Rational {
         } else {
             *self
         }
+    }
+
+    pub fn floor(&self) -> isize {
+        (self.numerator as f64 / self.denominator as f64).floor() as isize
+    }
+
+    pub fn ceil(&self) -> isize {
+        (self.numerator as f64 / self.denominator as f64).ceil() as isize
+    }
+}
+
+impl Ord for Rational {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (self.numerator * other.denominator).cmp(&(other.numerator * self.denominator))
+    }
+}
+
+impl PartialOrd for Rational {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -239,5 +260,19 @@ mod tests {
     fn neg() {
         let a = Rational::new(-7, 3);
         assert_eq!(-a, Rational::new(7, 3));
+    }
+
+    #[test]
+    fn cmp() {
+        let a = Rational::new(1, 2);
+        let b = Rational::new(1, 3);
+        assert!(a > b);
+        assert!(b < a);
+    }
+
+    #[test]
+    fn floor_and_ceil() {
+        assert_eq!(Rational::new(1, 3).floor(), 0);
+        assert_eq!(Rational::new(1, 3).ceil(), 1);
     }
 }
