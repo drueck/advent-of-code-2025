@@ -2,7 +2,9 @@
 // https://adventofcode.com/2025/day/10
 // Usage: `cargo run <input-file>
 
-use day_10::linear_algebra::{extract_parametric_solution, extract_pivots, gauss_jordan_to_rref};
+use day_10::linear_algebra::{
+    extract_parametric_solution, extract_pivots, gauss_jordan_to_rref, AffineExpression, PivotData,
+};
 use day_10::rational::Rational;
 use regex::Regex;
 use std::cmp::{Ord, Ordering, PartialOrd};
@@ -31,22 +33,107 @@ fn main() {
         .map(|machine| fewest_presses(&machine))
         .sum();
 
-    let mut equations = machines[0].equations.clone();
-    gauss_jordan_to_rref(&mut equations);
-    let pivot_data = extract_pivots(&equations);
-    let parametric_solution = extract_parametric_solution(&equations, &pivot_data);
+    let mut part_2: Rational = 0.into();
+    let mut part_2_n_machines = 0;
 
-    for affine_expression in parametric_solution {
-        println!("{:?}", affine_expression);
+    for machine in &machines[..] {
+        let mut equations = machine.equations.clone();
+        gauss_jordan_to_rref(&mut equations);
+        let pivot_data = extract_pivots(&equations);
+        let num_free_vars = pivot_data.free_columns.len();
+
+        let parametric_solution = extract_parametric_solution(&equations, &pivot_data);
+
+        let min_buttons: Rational = match num_free_vars {
+            0 => parametric_solution
+                .iter()
+                .map(|ae| ae.constant)
+                .sum::<Rational>(),
+            1 => {
+                // for 1 free variable:
+                // if A > 0, free var lower bound is >= ceil(-C/A)
+                // if A < 0, free var upper bound is <= floor(-C/A)
+                let (min, max) = free_variable_bounds(&parametric_solution, &pivot_data);
+                let sum_equation: AffineExpression = parametric_solution.into_iter().sum();
+
+                let var = pivot_data.free_columns[0];
+                let mut values = HashMap::from([(var, Rational::from(min as isize))]);
+                let mut minimal_sum = Rational::from(isize::MAX);
+
+                for val in min..=max {
+                    values.insert(var, Rational::from(val as isize));
+                    let sum = sum_equation.eval(&values);
+                    if sum.denominator != 1 {
+                        continue;
+                    }
+                    if sum < minimal_sum {
+                        minimal_sum = sum;
+                    }
+                }
+
+                minimal_sum
+            }
+            2 => {
+                // println!("START");
+                // parametric_solution.iter().for_each(|ae| println!("{ae}"));
+                0.into()
+            }
+            _ => 0.into(),
+        };
+
+        if min_buttons != 0.into() {
+            assert_eq!(min_buttons.denominator, 1);
+            part_2_n_machines += 1;
+            part_2 += min_buttons;
+        }
     }
 
-    // for i in 0..equations.len() {
-    //     println!("{:?}", equations[i]);
-    // }
+    println!("part 1: {part_1}");
 
-    // println!("{:?}", pivot_data);
+    println!(
+        "partial solution for part 2 with {} machines solved: {}",
+        part_2_n_machines, part_2
+    );
+}
 
-    println!("{part_1}");
+// only implemented for 1 free variable currently
+fn free_variable_bounds(
+    // machine: &Machine,
+    parametric_solution: &Vec<AffineExpression>,
+    pivot_data: &PivotData,
+) -> (usize, usize) {
+    // theory: there will be no equation where there is no upper bound found here
+    // we should assert this and if needed we can derive an upper bound from the original equations
+    let mut min: isize = 0;
+    let mut max: isize = isize::MAX;
+
+    assert_eq!(pivot_data.free_columns.len(), 1);
+    let free_column = pivot_data.free_columns[0];
+
+    for affine_expression in parametric_solution {
+        if let Some(&coefficient) = affine_expression
+            .free_variable_coefficients
+            .get(&free_column)
+        {
+            // if A > 0, free var lower bound is >= ceil(-C/A)
+            // if A < 0, free var upper bound is <= floor(-C/A)
+            if coefficient > Rational::from(0) {
+                let new_min = (-affine_expression.constant / coefficient).ceil();
+                if new_min > min {
+                    min = new_min;
+                }
+            } else if coefficient < 0.into() {
+                let new_max = (-affine_expression.constant / coefficient).floor();
+                if new_max < max {
+                    max = new_max;
+                }
+            }
+        }
+    }
+
+    assert!(max < isize::MAX);
+
+    (min as usize, max as usize)
 }
 
 fn fewest_presses(machine: &Machine) -> usize {
