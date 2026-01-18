@@ -4,6 +4,26 @@ use std::iter::Sum;
 
 use crate::rational::Rational;
 
+pub fn naive_max_bounds(equations: &Vec<Vec<Rational>>) -> HashMap<usize, Rational> {
+    let rows = equations.len();
+    let cols = equations[0].len();
+    let global_max = (0..rows).map(|row| equations[row][cols - 1]).max().unwrap();
+    let mut max_bounds: HashMap<usize, Rational> =
+        (0..(cols - 1)).map(|i| (i, global_max)).collect();
+
+    for equation in equations.iter() {
+        for var in 0..(cols - 1) {
+            if equation[var] == 1.into() {
+                max_bounds
+                    .entry(var)
+                    .and_modify(|old_max| *old_max = *old_max.min(&mut equation[cols - 1].clone()));
+            }
+        }
+    }
+
+    max_bounds
+}
+
 pub fn gauss_jordan_to_rref(equations: &mut Vec<Vec<Rational>>) {
     let rows = equations.len();
     let cols = equations[0].len();
@@ -129,14 +149,27 @@ pub struct AffineExpression {
 }
 
 impl AffineExpression {
+    // must supply all values for all free variables
     pub fn eval(&self, values: &HashMap<usize, Rational>) -> Rational {
         let mut result = self.constant;
 
-        assert_eq!(self.free_variable_coefficients.len(), values.len());
-
         for (var, value) in values.iter() {
-            assert!(self.free_variable_coefficients.contains_key(var));
-            result += self.free_variable_coefficients[var] * *value
+            if self.free_variable_coefficients.contains_key(var) {
+                result += self.free_variable_coefficients[var] * *value
+            }
+        }
+
+        result
+    }
+
+    // plug in the values for the given variables and return the resulting expression
+    pub fn partial_eval(&self, values: &HashMap<usize, Rational>) -> Self {
+        let mut result = self.clone();
+
+        for (var, &value) in values.iter() {
+            if let Some(coefficient) = result.free_variable_coefficients.remove(var) {
+                result.constant += value * coefficient;
+            }
         }
 
         result
@@ -272,5 +305,21 @@ mod tests {
         let values = HashMap::from([(2, Rational::from(2))]);
 
         assert_eq!(a.eval(&values), Rational::from(3));
+    }
+
+    #[test]
+    fn partial_eval_affine_expression() {
+        let a = AffineExpression {
+            dependent_variable: 0,
+            constant: Rational::from(-7),
+            free_variable_coefficients: HashMap::from([
+                (1, Rational::from(-7)),
+                (2, Rational::from(2)),
+            ]),
+        };
+
+        let a_partial = a.partial_eval(&HashMap::from([(1, Rational::from(5))]));
+
+        assert_eq!(format!("{a_partial}"), String::from("a = -42 + 2c"));
     }
 }
