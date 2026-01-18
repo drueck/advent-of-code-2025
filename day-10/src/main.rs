@@ -35,13 +35,10 @@ fn main() {
         .sum();
 
     let mut part_2: Rational = 0.into();
-    let mut part_2_n_machines = 0;
 
     for machine in &machines[..] {
         let mut equations = machine.equations.clone();
         let global_max_bounds = naive_max_bounds(&machine.equations.clone());
-        let rows = equations.len();
-        let cols = equations[0].len();
         gauss_jordan_to_rref(&mut equations);
         let pivot_data = extract_pivots(&equations);
         let num_free_vars = pivot_data.free_columns.len();
@@ -56,7 +53,8 @@ fn main() {
             1 => {
                 let var = pivot_data.free_columns[0];
                 let naive_max = global_max_bounds[&var].try_into().unwrap();
-                let (min, max) = free_variable_bounds(&parametric_solution, var, 0, naive_max);
+                let (min, max) =
+                    free_variable_bounds(&parametric_solution, var, 0, naive_max, &HashMap::new());
                 let sum_equation: AffineExpression = parametric_solution.clone().into_iter().sum();
 
                 let mut values = HashMap::from([(var, Rational::from(min as isize))]);
@@ -85,7 +83,7 @@ fn main() {
                 let solution = parametric_solution.clone();
                 let sum_equation: AffineExpression = parametric_solution.into_iter().sum();
 
-                let mut bounds: HashMap<usize, (usize, usize)> = HashMap::new();
+                let mut bounds: HashMap<usize, (isize, isize)> = HashMap::new();
 
                 // get the bounds we can derive from the current solution
                 for var in pivot_data.free_columns {
@@ -96,13 +94,16 @@ fn main() {
                             var,
                             0,
                             global_max_bounds[&var].try_into().unwrap(),
+                            &HashMap::new(),
                         ),
                     );
                 }
 
                 // pick our outer loop
-                let (outer, (outer_min, outer_max)) =
-                    bounds.iter().min_by_key(|(_, (_, max))| max).unwrap();
+                let (outer, (outer_min, outer_max)) = bounds
+                    .iter()
+                    .min_by_key(|(_, (min, max))| max - min)
+                    .unwrap();
 
                 let (inner, (inner_min, inner_max)) =
                     bounds.iter().find(|(var, _)| var != &outer).unwrap();
@@ -111,9 +112,9 @@ fn main() {
 
                 for outer_val in *outer_min..=*outer_max {
                     let mut values: HashMap<usize, Rational> = HashMap::new();
-                    values.insert(*outer, (outer_val as isize).into());
+                    values.insert(*outer, (outer_val).into());
                     for inner_val in *inner_min..=*inner_max {
-                        values.insert(*inner, (inner_val as isize).into());
+                        values.insert(*inner, (inner_val).into());
 
                         let all_positive_integers = solution
                             .iter()
@@ -133,22 +134,97 @@ fn main() {
 
                 minimal_sum
             }
-            _ => 0.into(),
+            3 => {
+                let solution = parametric_solution.clone();
+                let sum_equation: AffineExpression = parametric_solution.into_iter().sum();
+                let mut bounds: HashMap<usize, (isize, isize)> = HashMap::new();
+
+                // get the bounds we can derive from the current solution
+                for var in pivot_data.free_columns {
+                    bounds.insert(
+                        var,
+                        free_variable_bounds(
+                            &solution,
+                            var,
+                            0,
+                            global_max_bounds[&var].try_into().unwrap(),
+                            &HashMap::new(),
+                        ),
+                    );
+                }
+
+                // pick our outer loop
+                let &outer = bounds
+                    .iter()
+                    .min_by_key(|(_, (min, max))| max - min)
+                    .map(|(k, _)| k)
+                    .unwrap();
+
+                let (outer_min, outer_max) = bounds.remove(&outer).unwrap();
+
+                let mid = *bounds.keys().next().unwrap();
+                let (global_mid_min, global_mid_max) = bounds.remove(&mid).unwrap();
+
+                let inner = *bounds.keys().next().unwrap();
+                let (global_inner_min, global_inner_max) = bounds.remove(&inner).unwrap();
+
+                let mut minimal_sum = Rational::from(isize::MAX);
+                let mut values: HashMap<usize, Rational> = HashMap::new();
+
+                for outer_val in outer_min..=outer_max {
+                    values.insert(outer, Rational::from(outer_val));
+
+                    let (mid_min, mid_max) = free_variable_bounds(
+                        &solution,
+                        mid,
+                        global_mid_min,
+                        global_mid_max,
+                        &values,
+                    );
+
+                    for mid_val in mid_min..=mid_max {
+                        values.insert(mid, Rational::from(mid_val));
+
+                        let (inner_min, inner_max) = free_variable_bounds(
+                            &solution,
+                            inner,
+                            global_inner_min,
+                            global_inner_max,
+                            &values,
+                        );
+
+                        for inner_val in inner_min..=inner_max {
+                            values.insert(inner, Rational::from(inner_val));
+
+                            let all_positive_integers = solution
+                                .iter()
+                                .all(|ae| ae.eval(&values).is_non_negative_integer());
+                            if !all_positive_integers {
+                                continue;
+                            }
+                            let sum = sum_equation.eval(&values);
+                            if !sum.is_non_negative_integer() {
+                                continue;
+                            }
+                            if sum < minimal_sum {
+                                minimal_sum = sum;
+                            }
+                        }
+                    }
+                }
+
+                minimal_sum
+            }
+            _ => unreachable!(),
         };
 
         if min_buttons != 0.into() {
-            assert_eq!(min_buttons.denominator, 1);
-            part_2_n_machines += 1;
             part_2 += min_buttons;
         }
     }
 
     println!("part 1: {part_1}");
-
-    println!(
-        "partial solution for part 2 with {} machines solved: {}",
-        part_2_n_machines, part_2
-    );
+    println!("part 2: {part_2}");
 }
 
 // derive min/max bounds from the parametric solution for the given free variable
@@ -159,31 +235,34 @@ fn free_variable_bounds(
     free_variable: usize,
     min: isize,
     max: isize,
-) -> (usize, usize) {
+    values: &HashMap<usize, Rational>,
+) -> (isize, isize) {
     // theory: there will be no equation where there is no upper bound found here
     // we should assert this and if needed we can derive an upper bound from the original equations
     let mut min: isize = min as isize;
     let mut max: isize = max as isize;
 
     for affine_expression in parametric_solution {
+        let simplified_expression = affine_expression.partial_eval(&values);
+
         // TODO: for more precise bounds reduce to single variable by partially evaling
         // with min max bounds for the other free variables in the expression if any
-        if affine_expression.free_variable_coefficients.len() > 1 {
+        if simplified_expression.free_variable_coefficients.len() > 1 {
             continue;
         }
-        if let Some(&coefficient) = affine_expression
+        if let Some(&coefficient) = simplified_expression
             .free_variable_coefficients
             .get(&free_variable)
         {
             // if A > 0, free var lower bound is >= ceil(-C/A)
             // if A < 0, free var upper bound is <= floor(-C/A)
             if coefficient > Rational::from(0) {
-                let new_min = (-affine_expression.constant / coefficient).ceil();
+                let new_min = (-simplified_expression.constant / coefficient).ceil();
                 if new_min > min {
                     min = new_min;
                 }
             } else if coefficient < 0.into() {
-                let new_max = (-affine_expression.constant / coefficient).floor();
+                let new_max = (-simplified_expression.constant / coefficient).floor();
                 if new_max < max {
                     max = new_max;
                 }
@@ -191,7 +270,7 @@ fn free_variable_bounds(
         }
     }
 
-    (min as usize, max as usize)
+    (min, max)
 }
 
 fn fewest_presses(machine: &Machine) -> usize {
@@ -249,9 +328,8 @@ fn fewest_presses(machine: &Machine) -> usize {
 
 #[derive(Debug)]
 struct Machine {
-    lights_bitmaps: u32,       // bitmap with low bit representing the 0th light
-    buttons_bitmaps: Vec<u32>, // bitmaps with which lights each button toggles
-    joltages: Vec<u32>,
+    lights_bitmaps: u32,           // bitmap with low bit representing the 0th light
+    buttons_bitmaps: Vec<u32>,     // bitmaps with which lights each button toggles
     equations: Vec<Vec<Rational>>, // matrix representing the constraint equations
 }
 
@@ -308,7 +386,6 @@ impl FromStr for Machine {
         Ok(Self {
             lights_bitmaps,
             buttons_bitmaps,
-            joltages,
             equations,
         })
     }
