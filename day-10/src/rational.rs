@@ -1,5 +1,5 @@
 use std::cmp::{Ord, Ordering, PartialOrd};
-use std::convert::From;
+use std::convert::{From, TryFrom};
 use std::fmt;
 use std::iter::Sum;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
@@ -13,6 +13,20 @@ pub struct Rational {
 impl From<isize> for Rational {
     fn from(num: isize) -> Self {
         Self::new(num, 1)
+    }
+}
+
+#[derive(Debug)]
+pub struct ConversionError;
+
+impl TryFrom<Rational> for isize {
+    type Error = ConversionError;
+    fn try_from(value: Rational) -> Result<Self, Self::Error> {
+        if value.denominator == 1 {
+            Ok(value.numerator)
+        } else {
+            Err(ConversionError)
+        }
     }
 }
 
@@ -68,6 +82,10 @@ impl Rational {
 
     pub fn ceil(&self) -> isize {
         (self.numerator as f64 / self.denominator as f64).ceil() as isize
+    }
+
+    pub fn is_non_negative_integer(&self) -> bool {
+        self.denominator == 1 && self.numerator >= 0
     }
 }
 
