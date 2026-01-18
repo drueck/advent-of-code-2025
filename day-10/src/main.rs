@@ -3,7 +3,8 @@
 // Usage: `cargo run <input-file>
 
 use day_10::linear_algebra::{
-    extract_parametric_solution, extract_pivots, gauss_jordan_to_rref, AffineExpression, PivotData,
+    extract_parametric_solution, extract_pivots, gauss_jordan_to_rref, naive_max_bounds,
+    AffineExpression,
 };
 use day_10::rational::Rational;
 use regex::Regex;
@@ -38,6 +39,9 @@ fn main() {
 
     for machine in &machines[..] {
         let mut equations = machine.equations.clone();
+        let global_max_bounds = naive_max_bounds(&machine.equations.clone());
+        let rows = equations.len();
+        let cols = equations[0].len();
         gauss_jordan_to_rref(&mut equations);
         let pivot_data = extract_pivots(&equations);
         let num_free_vars = pivot_data.free_columns.len();
@@ -50,20 +54,24 @@ fn main() {
                 .map(|ae| ae.constant)
                 .sum::<Rational>(),
             1 => {
-                // for 1 free variable:
-                // if A > 0, free var lower bound is >= ceil(-C/A)
-                // if A < 0, free var upper bound is <= floor(-C/A)
-                let (min, max) = free_variable_bounds(&parametric_solution, &pivot_data);
-                let sum_equation: AffineExpression = parametric_solution.into_iter().sum();
-
                 let var = pivot_data.free_columns[0];
+                let naive_max = global_max_bounds[&var].try_into().unwrap();
+                let (min, max) = free_variable_bounds(&parametric_solution, var, 0, naive_max);
+                let sum_equation: AffineExpression = parametric_solution.clone().into_iter().sum();
+
                 let mut values = HashMap::from([(var, Rational::from(min as isize))]);
                 let mut minimal_sum = Rational::from(isize::MAX);
 
                 for val in min..=max {
                     values.insert(var, Rational::from(val as isize));
+                    let all_positive_integers = parametric_solution
+                        .iter()
+                        .all(|ae| ae.eval(&values).is_non_negative_integer());
+                    if !all_positive_integers {
+                        continue;
+                    }
                     let sum = sum_equation.eval(&values);
-                    if sum.denominator != 1 {
+                    if !sum.is_non_negative_integer() {
                         continue;
                     }
                     if sum < minimal_sum {
@@ -74,9 +82,56 @@ fn main() {
                 minimal_sum
             }
             2 => {
-                // println!("START");
-                // parametric_solution.iter().for_each(|ae| println!("{ae}"));
-                0.into()
+                let solution = parametric_solution.clone();
+                let sum_equation: AffineExpression = parametric_solution.into_iter().sum();
+
+                let mut bounds: HashMap<usize, (usize, usize)> = HashMap::new();
+
+                // get the bounds we can derive from the current solution
+                for var in pivot_data.free_columns {
+                    bounds.insert(
+                        var,
+                        free_variable_bounds(
+                            &solution,
+                            var,
+                            0,
+                            global_max_bounds[&var].try_into().unwrap(),
+                        ),
+                    );
+                }
+
+                // pick our outer loop
+                let (outer, (outer_min, outer_max)) =
+                    bounds.iter().min_by_key(|(_, (_, max))| max).unwrap();
+
+                let (inner, (inner_min, inner_max)) =
+                    bounds.iter().find(|(var, _)| var != &outer).unwrap();
+
+                let mut minimal_sum = Rational::from(isize::MAX);
+
+                for outer_val in *outer_min..=*outer_max {
+                    let mut values: HashMap<usize, Rational> = HashMap::new();
+                    values.insert(*outer, (outer_val as isize).into());
+                    for inner_val in *inner_min..=*inner_max {
+                        values.insert(*inner, (inner_val as isize).into());
+
+                        let all_positive_integers = solution
+                            .iter()
+                            .all(|ae| ae.eval(&values).is_non_negative_integer());
+                        if !all_positive_integers {
+                            continue;
+                        }
+                        let sum = sum_equation.eval(&values);
+                        if !sum.is_non_negative_integer() {
+                            continue;
+                        }
+                        if sum < minimal_sum {
+                            minimal_sum = sum;
+                        }
+                    }
+                }
+
+                minimal_sum
             }
             _ => 0.into(),
         };
@@ -96,24 +151,29 @@ fn main() {
     );
 }
 
-// only implemented for 1 free variable currently
+// derive min/max bounds from the parametric solution for the given free variable
+// if there are no affine expressions that only contain the one free variable,
+// no bounds will be returned other than the defaults
 fn free_variable_bounds(
-    // machine: &Machine,
     parametric_solution: &Vec<AffineExpression>,
-    pivot_data: &PivotData,
+    free_variable: usize,
+    min: isize,
+    max: isize,
 ) -> (usize, usize) {
     // theory: there will be no equation where there is no upper bound found here
     // we should assert this and if needed we can derive an upper bound from the original equations
-    let mut min: isize = 0;
-    let mut max: isize = isize::MAX;
-
-    assert_eq!(pivot_data.free_columns.len(), 1);
-    let free_column = pivot_data.free_columns[0];
+    let mut min: isize = min as isize;
+    let mut max: isize = max as isize;
 
     for affine_expression in parametric_solution {
+        // TODO: for more precise bounds reduce to single variable by partially evaling
+        // with min max bounds for the other free variables in the expression if any
+        if affine_expression.free_variable_coefficients.len() > 1 {
+            continue;
+        }
         if let Some(&coefficient) = affine_expression
             .free_variable_coefficients
-            .get(&free_column)
+            .get(&free_variable)
         {
             // if A > 0, free var lower bound is >= ceil(-C/A)
             // if A < 0, free var upper bound is <= floor(-C/A)
@@ -130,8 +190,6 @@ fn free_variable_bounds(
             }
         }
     }
-
-    assert!(max < isize::MAX);
 
     (min as usize, max as usize)
 }
