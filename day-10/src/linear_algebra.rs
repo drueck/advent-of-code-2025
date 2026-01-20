@@ -4,7 +4,7 @@ use std::iter::Sum;
 
 use crate::rational::Rational;
 
-pub fn naive_max_bounds(equations: &Vec<Vec<Rational>>) -> HashMap<usize, Rational> {
+pub fn naive_max_bounds(equations: &[Vec<Rational>]) -> HashMap<usize, Rational> {
     let rows = equations.len();
     let cols = equations[0].len();
     let global_max = (0..rows).map(|row| equations[row][cols - 1]).max().unwrap();
@@ -84,7 +84,7 @@ pub fn gauss_jordan_to_rref(equations: &mut Vec<Vec<Rational>>) {
 }
 
 fn find_pivot(
-    equations: &Vec<Vec<Rational>>,
+    equations: &[Vec<Rational>],
     pivot_row: usize,
     pivot_col_start: usize,
 ) -> Option<(usize, usize)> {
@@ -109,7 +109,7 @@ pub struct PivotData {
     pub free_columns: Vec<usize>,
 }
 
-pub fn extract_pivots(rref_matrix: &Vec<Vec<Rational>>) -> PivotData {
+pub fn extract_pivots(rref_matrix: &[Vec<Rational>]) -> PivotData {
     let rows = rref_matrix.len();
     let cols = rref_matrix[0].len();
     let mut free_columns = vec![];
@@ -176,7 +176,7 @@ impl AffineExpression {
     }
 }
 
-impl<'a> Sum for AffineExpression {
+impl Sum for AffineExpression {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
         let result = AffineExpression {
             dependent_variable: (b's' - b'a') as usize,
@@ -234,7 +234,7 @@ fn free_var(index: usize, coefficient: Rational) -> String {
 }
 
 pub fn extract_parametric_solution(
-    rref_matrix: &Vec<Vec<Rational>>,
+    rref_matrix: &[Vec<Rational>],
     pivot_data: &PivotData,
 ) -> Vec<AffineExpression> {
     let rhs_col = rref_matrix[0].len() - 1;
@@ -267,6 +267,48 @@ pub fn extract_parametric_solution(
             }
         })
         .collect()
+}
+
+// derive min/max bounds from the parametric solution for the given free variable
+// if there are no affine expressions that only contain the one free variable,
+// no bounds will be returned other than the defaults
+pub fn free_variable_bounds(
+    parametric_solution: &[AffineExpression],
+    free_variable: usize,
+    min: isize,
+    max: isize,
+    values: &HashMap<usize, Rational>,
+) -> (isize, isize) {
+    let mut min: isize = min;
+    let mut max: isize = max;
+
+    for affine_expression in parametric_solution {
+        let simplified_expression = affine_expression.partial_eval(&values);
+
+        if simplified_expression.free_variable_coefficients.len() > 1 {
+            continue;
+        }
+        if let Some(&coefficient) = simplified_expression
+            .free_variable_coefficients
+            .get(&free_variable)
+        {
+            // if A > 0, free var lower bound is >= ceil(-C/A)
+            // if A < 0, free var upper bound is <= floor(-C/A)
+            if coefficient > Rational::from(0) {
+                let new_min = (-simplified_expression.constant / coefficient).ceil();
+                if new_min > min {
+                    min = new_min;
+                }
+            } else if coefficient < 0.into() {
+                let new_max = (-simplified_expression.constant / coefficient).floor();
+                if new_max < max {
+                    max = new_max;
+                }
+            }
+        }
+    }
+
+    (min, max)
 }
 
 #[cfg(test)]
