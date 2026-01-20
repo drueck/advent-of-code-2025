@@ -179,7 +179,7 @@ impl Neg for Rational {
 
 impl Sum for Rational {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.reduce(|result, num| result + num).unwrap()
+        iter.reduce(|result, num| result + num).unwrap_or(0.into())
     }
 }
 
